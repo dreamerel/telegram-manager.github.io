@@ -1,7 +1,7 @@
 {
   "name": "telegram-web-app",
   "private": true,
-  "homepage": "https://telegram-manager.github.io/telegram-manager",
+  "homepage": "https://dreamerel.github.io/telegram-manager",
   "version": "0.0.0",
   "type": "module",
   "scripts": {
