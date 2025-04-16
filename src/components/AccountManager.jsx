@@ -22,6 +22,8 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { accountsApi } from '../api/accounts';
+import { MTProto } from '@mtproto/core';
+import { Buffer } from 'buffer';
 
 const AccountManager = () => {
   const [accounts, setAccounts] = useState([]);
@@ -30,6 +32,15 @@ const AccountManager = () => {
   const [verificationCode, setVerificationCode] = useState('');
   const [showVerification, setShowVerification] = useState(false);
   const [pendingAccount, setPendingAccount] = useState(null);
+  const [mtproto, setMtproto] = useState(null);
+
+  const initializeMTProto = (apiId, apiHash) => {
+    return new MTProto({
+      api_id: apiId,
+      api_hash: apiHash,
+      test: false,
+    });
+  };
 
   useEffect(() => {
     fetchAccounts();
@@ -71,14 +82,18 @@ const AccountManager = () => {
     setLoading(true);
     setError('');
     try {
-      const response = await accountsApi.add(newAccount);
-      if (response.needsVerification) {
-        setPendingAccount(newAccount);
-        setShowVerification(true);
-      } else {
-        await fetchAccounts();
-        handleClose();
-      }
+      const mtprotoInstance = initializeMTProto(newAccount.apiId, newAccount.apiHash);
+      setMtproto(mtprotoInstance);
+
+      const { phone_code_hash } = await mtprotoInstance.call('auth.sendCode', {
+        phone_number: newAccount.phone,
+        settings: {
+          _: 'codeSettings'
+        }
+      });
+
+      setPendingAccount({ ...newAccount, phone_code_hash });
+      setShowVerification(true);
     } catch (err) {
       setError(err.message || 'Ошибка при добавлении аккаунта');
     } finally {
@@ -90,14 +105,23 @@ const AccountManager = () => {
     setLoading(true);
     setError('');
     try {
-      await accountsApi.verify({
-        ...pendingAccount,
-        verificationCode
+      const { user } = await mtproto.call('auth.signIn', {
+        phone_number: pendingAccount.phone,
+        phone_code_hash: pendingAccount.phone_code_hash,
+        phone_code: verificationCode
       });
+
+      await accountsApi.add({
+        ...pendingAccount,
+        userId: user.id,
+        accessHash: user.access_hash
+      });
+
       await fetchAccounts();
       setShowVerification(false);
       setPendingAccount(null);
       setVerificationCode('');
+      setMtproto(null);
       handleClose();
     } catch (err) {
       setError(err.message || 'Ошибка при верификации');
